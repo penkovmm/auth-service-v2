@@ -1,0 +1,313 @@
+"""
+OAuth authentication routes.
+
+Handles OAuth 2.0 flow with HeadHunter:
+- /login - initiate OAuth flow
+- /callback - OAuth callback handler
+- /logout - logout user
+"""
+
+from fastapi import APIRouter, Depends, Request, HTTPException, status, Response
+from fastapi.responses import RedirectResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.logging import get_logger
+from app.db.database import get_db
+from app.services import HeadHunterOAuthService, TokenService, SessionService
+from app.db.repositories.audit import AuditLogRepository
+from app.schemas import OAuthURLResponse, LoginSuccessResponse, LogoutResponse
+from app.utils.exceptions import (
+    OAuthError,
+    OAuthStateError,
+    UserNotWhitelistedError,
+    SessionError,
+)
+
+logger = get_logger(__name__)
+router = APIRouter(prefix="/auth", tags=["OAuth Authentication"])
+
+
+def get_client_info(request: Request) -> tuple[str | None, str | None]:
+    """
+    Extract client IP and user agent from request.
+
+    Args:
+        request: FastAPI request
+
+    Returns:
+        tuple: (ip_address, user_agent)
+    """
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    return ip_address, user_agent
+
+
+@router.get("/login", response_model=OAuthURLResponse)
+async def login(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Initiate OAuth login flow.
+
+    Returns HeadHunter authorization URL with state for CSRF protection.
+
+    **Flow:**
+    1. Generate random state for CSRF protection
+    2. Save state to database with expiration
+    3. Return authorization URL
+
+    **Returns:**
+    - authorization_url: URL to redirect user to HH authorization
+    - state: CSRF protection token
+    """
+    ip_address, user_agent = get_client_info(request)
+
+    oauth_service = HeadHunterOAuthService(db)
+
+    try:
+        authorization_url, state = await oauth_service.get_authorization_url(
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+
+        logger.info(
+            "login_initiated",
+            ip_address=ip_address,
+            state=state,
+        )
+
+        return OAuthURLResponse(
+            authorization_url=authorization_url,
+            state=state,
+        )
+
+    except Exception as e:
+        logger.error(
+            "login_initiation_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to initiate login: {str(e)}",
+        )
+
+
+@router.get("/callback", response_model=LoginSuccessResponse)
+async def oauth_callback(
+    code: str,
+    state: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    OAuth callback handler.
+
+    Handles the redirect from HeadHunter after user authorization.
+
+    **Flow:**
+    1. Validate state (CSRF protection)
+    2. Exchange code for access token
+    3. Fetch user info from HH API
+    4. Check user whitelist
+    5. Create/update user in database
+    6. Save encrypted tokens
+    7. Create session
+    8. Log audit event
+
+    **Query Parameters:**
+    - code: Authorization code from HH
+    - state: CSRF protection token
+
+    **Returns:**
+    - message: Success message
+    - session_id: Created session ID
+    - user: User information
+
+    **Errors:**
+    - 400: Invalid state or code
+    - 403: User not in whitelist
+    - 500: Internal server error
+    """
+    ip_address, user_agent = get_client_info(request)
+
+    oauth_service = HeadHunterOAuthService(db)
+    token_service = TokenService(db)
+    session_service = SessionService(db)
+    audit_repo = AuditLogRepository(db)
+
+    try:
+        # Exchange code for token
+        token_response = await oauth_service.exchange_code_for_token(code, state)
+
+        access_token = token_response.get("access_token")
+        refresh_token = token_response.get("refresh_token")
+        expires_in = token_response.get("expires_in")
+
+        # Get user info
+        user_info = await oauth_service.get_user_info(access_token)
+
+        # Get or create user (includes whitelist check)
+        user = await oauth_service.get_or_create_user(user_info)
+
+        # Save encrypted tokens
+        await token_service.save_tokens(
+            user_id=user.id,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_in=expires_in,
+        )
+
+        # Create session
+        user_session = await session_service.create_session(
+            user_id=user.id,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+
+        # Log successful login
+        await audit_repo.log_login(
+            user_id=user.id,
+            hh_user_id=user.hh_user_id,
+            session_id=user_session.session_id,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            success=True,
+        )
+
+        await db.commit()
+
+        logger.info(
+            "login_successful",
+            user_id=user.id,
+            hh_user_id=user.hh_user_id,
+            session_id=user_session.session_id,
+        )
+
+        from app.schemas.responses import UserResponse
+
+        return LoginSuccessResponse(
+            session_id=user_session.session_id,
+            user=UserResponse.model_validate(user),
+        )
+
+    except OAuthStateError as e:
+        logger.warning("oauth_state_error", error=str(e), state=state)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+    except UserNotWhitelistedError as e:
+        logger.warning("user_not_whitelisted", error=str(e), ip_address=ip_address)
+
+        # Log failed login attempt
+        await audit_repo.log_event(
+            event_type="login",
+            event_category="security",
+            event_description="Login attempt by non-whitelisted user",
+            success=False,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            error_message=str(e),
+        )
+        await db.commit()
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: User not authorized",
+        )
+
+    except OAuthError as e:
+        logger.error("oauth_error", error=str(e), error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"OAuth error: {str(e)}",
+        )
+
+    except Exception as e:
+        logger.error(
+            "callback_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Authentication failed: {str(e)}",
+        )
+
+
+@router.post("/logout", response_model=LogoutResponse)
+async def logout(
+    request: Request,
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Logout user.
+
+    Revokes session and logs audit event.
+
+    **Request Body:**
+    - session_id: Session ID to revoke
+
+    **Returns:**
+    - message: Success message
+
+    **Errors:**
+    - 404: Session not found
+    - 500: Internal server error
+    """
+    ip_address, user_agent = get_client_info(request)
+
+    session_service = SessionService(db)
+    audit_repo = AuditLogRepository(db)
+
+    try:
+        # Get session to retrieve user info
+        user_session = await session_service.get_session(session_id)
+
+        # Revoke session
+        revoked = await session_service.revoke_session(session_id)
+
+        if not revoked:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found",
+            )
+
+        # Log logout
+        from app.db.repositories.user import UserRepository
+
+        user_repo = UserRepository(db)
+        user = await user_repo.get_by_id(user_session.user_id)
+
+        if user:
+            await audit_repo.log_logout(
+                user_id=user.id,
+                hh_user_id=user.hh_user_id,
+                session_id=session_id,
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+
+        await db.commit()
+
+        logger.info("logout_successful", session_id=session_id)
+
+        return LogoutResponse()
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        logger.error(
+            "logout_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Logout failed: {str(e)}",
+        )
