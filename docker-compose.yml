@@ -1,0 +1,109 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:17
+    container_name: auth-service-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-authuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-authpass}
+      POSTGRES_DB: ${POSTGRES_DB:-auth_service}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-authuser}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - auth-network
+    restart: unless-stopped
+
+  # Auth Service Application
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auth-service-app
+    environment:
+      # Application
+      APP_NAME: ${APP_NAME:-HH Auth Service v2}
+      APP_VERSION: ${APP_VERSION:-2.0.0}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      DEBUG: ${DEBUG:-false}
+
+      # Server
+      HOST: ${HOST:-0.0.0.0}
+      PORT: ${PORT:-8000}
+      WORKERS: ${WORKERS:-4}
+
+      # Database
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-authuser}:${POSTGRES_PASSWORD:-authpass}@postgres:5432/${POSTGRES_DB:-auth_service}
+
+      # HeadHunter OAuth
+      HH_CLIENT_ID: ${HH_CLIENT_ID}
+      HH_CLIENT_SECRET: ${HH_CLIENT_SECRET}
+      HH_APP_TOKEN: ${HH_APP_TOKEN}
+      HH_REDIRECT_URI: ${HH_REDIRECT_URI}
+      HH_USER_AGENT: ${HH_USER_AGENT:-HH Resume Parser Auth Service/2.0}
+
+      # Security
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      SESSION_EXPIRE_HOURS: ${SESSION_EXPIRE_HOURS:-720}
+      EXCHANGE_CODE_EXPIRE_MINUTES: ${EXCHANGE_CODE_EXPIRE_MINUTES:-5}
+      OAUTH_STATE_EXPIRE_MINUTES: ${OAUTH_STATE_EXPIRE_MINUTES:-10}
+
+      # Admin
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+
+      # Rate Limiting
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+
+      # Monitoring
+      METRICS_ENABLED: ${METRICS_ENABLED:-true}
+
+    ports:
+      - "${APP_PORT:-8000}:8000"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    networks:
+      - auth-network
+
+    restart: unless-stopped
+
+    # Run migrations on startup
+    command: >
+      sh -c "
+        echo 'Waiting for database...' &&
+        sleep 5 &&
+        echo 'Running migrations...' &&
+        alembic upgrade head &&
+        echo 'Starting application...' &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${WORKERS:-4}
+      "
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  auth-network:
+    driver: bridge

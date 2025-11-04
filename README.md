@@ -51,16 +51,61 @@ uvicorn app.main:app --reload --port 8000
 
 ## Docker
 
-### Сборка образа
+### Быстрый запуск
 
+1. **Скопируйте и настройте переменные окружения:**
 ```bash
-docker build -t auth-service-v2 .
+cp .env.example .env
+# Отредактируйте .env файл, заполните HH_CLIENT_ID, HH_CLIENT_SECRET, ENCRYPTION_KEY
 ```
 
-### Запуск с docker-compose
-
+2. **Запустите сервисы:**
 ```bash
 docker-compose up -d
+```
+
+3. **Проверьте статус:**
+```bash
+docker-compose ps
+curl http://localhost:8000/health
+```
+
+4. **Просмотр логов:**
+```bash
+docker-compose logs -f auth-service
+```
+
+### Отдельная сборка и запуск
+
+```bash
+# Сборка образа
+docker build -t auth-service-v2 .
+
+# Запуск контейнера
+docker run -d \
+  --name auth-service \
+  -p 8000:8000 \
+  --env-file .env \
+  auth-service-v2
+```
+
+### Полезные команды
+
+```bash
+# Остановка сервисов
+docker-compose down
+
+# Пересборка после изменений
+docker-compose up -d --build
+
+# Просмотр логов
+docker-compose logs -f
+
+# Выполнение миграций вручную
+docker-compose exec auth-service alembic upgrade head
+
+# Доступ к базе данных
+docker-compose exec postgres psql -U authuser -d auth_service
 ```
 
 ## API Endpoints
@@ -147,3 +192,75 @@ Proprietary - для внутреннего использования
 
 - Email: penkovmm@gmail.com
 - GitHub: https://github.com/penkovmm/auth_service_v2
+
+## Production Deployment
+
+### Требования
+
+- Docker и Docker Compose
+- PostgreSQL 15+ (или используйте контейнер из docker-compose)
+- Минимум 512MB RAM
+- SSL сертификат (для HTTPS)
+
+### Настройка для production
+
+1. **Обновите .env файл:**
+   - Установите `ENVIRONMENT=production`
+   - Установите `DEBUG=false`
+   - Используйте сильные пароли для `POSTGRES_PASSWORD` и `ADMIN_PASSWORD`
+   - Настройте `HH_REDIRECT_URI` на ваш production домен
+
+2. **Генерация секретов:**
+```bash
+# Encryption key
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
+# Admin password hash
+python -c "import bcrypt; print(bcrypt.hashpw('your_password'.encode('utf-8'), bcrypt.gensalt()).decode('utf-8'))"
+```
+
+3. **Запуск с ограничениями ресурсов:**
+```bash
+docker-compose up -d
+```
+
+### Мониторинг
+
+- Health check: `GET /health`
+- Logs: `docker-compose logs -f auth-service`
+- Database backup: `docker-compose exec postgres pg_dump -U authuser auth_service > backup.sql`
+
+### Обновление
+
+```bash
+# 1. Остановка сервиса
+docker-compose stop auth-service
+
+# 2. Обновление кода
+git pull
+
+# 3. Пересборка образа
+docker-compose build auth-service
+
+# 4. Применение миграций
+docker-compose run --rm auth-service alembic upgrade head
+
+# 5. Запуск нового контейнера
+docker-compose up -d auth-service
+```
+
+## Безопасность
+
+- ✅ Все токены шифруются Fernet (симметричное шифрование)
+- ✅ Пароли хешируются с bcrypt
+- ✅ CSRF protection для OAuth flow (state validation)
+- ✅ Whitelist авторизованных пользователей
+- ✅ Sensitive data фильтруется в логах
+- ✅ Basic Auth для admin endpoints
+- ✅ Автоматическое истечение сессий
+- ✅ Audit logging всех важных событий
+
+## Лицензия
+
+Proprietary
+
