@@ -2,25 +2,35 @@
 
 Современный микросервис для OAuth 2.0 авторизации через HeadHunter API.
 
+[![Python](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-blue.svg)](https://www.postgresql.org/)
+[![Docker](https://img.shields.io/badge/Docker-ready-blue.svg)](https://www.docker.com/)
+[![License](https://img.shields.io/badge/license-Proprietary-red.svg)](LICENSE)
+
 ## Описание
 
 Auth Service v2 - это независимый микросервис, который:
-- Управляет OAuth 2.0 flow с HeadHunter
-- Хранит и автоматически обновляет токены пользователей
-- Предоставляет API для других микросервисов
-- Контролирует доступ через whitelist пользователей
-- Обеспечивает безопасное хранение токенов с шифрованием
+- 🔐 Управляет OAuth 2.0 flow с HeadHunter
+- 🔄 Хранит и автоматически обновляет токены пользователей
+- 🌐 Предоставляет REST API для других микросервисов
+- ✅ Контролирует доступ через whitelist пользователей
+- 🔒 Обеспечивает безопасное хранение токенов с шифрованием (Fernet)
+- 📊 Audit logging всех важных событий
+- 🚀 Async/await для высокой производительности
 
 ## Технологии
 
-- **Backend**: Python 3.11+, FastAPI (async)
-- **Database**: PostgreSQL 15
+- **Backend**: Python 3.12, FastAPI 0.104+ (async)
+- **Database**: PostgreSQL 17
 - **ORM**: SQLAlchemy 2.0 (async)
 - **Migrations**: Alembic
 - **HTTP Client**: httpx (async)
-- **Security**: cryptography (Fernet encryption)
+- **Security**: cryptography (Fernet encryption), bcrypt
 - **Logging**: structlog (JSON)
 - **Rate Limiting**: slowapi
+- **Server**: Uvicorn (ASGI)
+- **Containerization**: Docker, Docker Compose
 
 ## Быстрый старт
 
@@ -133,11 +143,21 @@ docker-compose exec postgres psql -U authuser -d auth_service
 - `GET /health` - Health check
 - `GET /metrics` - Prometheus metrics
 
-## Документация API
+## Документация
+
+### Автоматическая API документация
 
 После запуска доступна по адресам:
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
+
+### Подробная документация
+
+- **[OAuth Flow](docs/OAUTH_FLOW.md)** - Детальное описание OAuth 2.0 flow с диаграммами и примерами
+- **[API Examples](docs/API_EXAMPLES.md)** - Примеры использования API на Python, JavaScript и других языках
+- **[Admin Guide](docs/ADMIN_GUIDE.md)** - Руководство администратора: управление пользователями, сессиями, мониторинг
+- **[Architecture](docs/ARCHITECTURE.md)** - Архитектура системы, диаграммы компонентов, технический стек
+- **[Deployment Checklist](docs/DEPLOYMENT_CHECKLIST.md)** - Полный чеклист для production deployment
 
 ## Структура проекта
 
@@ -145,15 +165,26 @@ docker-compose exec postgres psql -U authuser -d auth_service
 auth_service_v2/
 ├── app/
 │   ├── api/              # API endpoints
+│   │   └── routes/       # Роутеры (oauth, admin, health)
 │   ├── core/             # Конфигурация и утилиты
 │   ├── db/               # Модели и репозитории
+│   │   ├── models.py     # SQLAlchemy модели
+│   │   └── repositories/ # Репозитории для доступа к данным
 │   ├── schemas/          # Pydantic схемы
 │   ├── services/         # Бизнес-логика
 │   └── main.py           # FastAPI приложение
+├── docs/                 # Документация
+│   ├── OAUTH_FLOW.md     # OAuth flow documentation
+│   ├── API_EXAMPLES.md   # API usage examples
+│   ├── ADMIN_GUIDE.md    # Administrator guide
+│   ├── ARCHITECTURE.md   # System architecture
+│   └── DEPLOYMENT_CHECKLIST.md  # Deployment guide
 ├── tests/                # Тесты
 ├── alembic/              # Миграции БД
 ├── templates/            # HTML шаблоны
-└── docker/               # Docker конфигурация
+├── Dockerfile            # Docker образ
+├── docker-compose.yml    # Docker Compose конфигурация
+└── requirements.txt      # Python зависимости
 ```
 
 ## Разработка
@@ -195,11 +226,13 @@ Proprietary - для внутреннего использования
 
 ## Production Deployment
 
+📋 **Полный чеклист для production deployment:** [docs/DEPLOYMENT_CHECKLIST.md](docs/DEPLOYMENT_CHECKLIST.md)
+
 ### Требования
 
 - Docker и Docker Compose
-- PostgreSQL 15+ (или используйте контейнер из docker-compose)
-- Минимум 512MB RAM
+- PostgreSQL 17 (или используйте контейнер из docker-compose)
+- Минимум 2 GB RAM (рекомендуется 4 GB)
 - SSL сертификат (для HTTPS)
 
 ### Настройка для production
