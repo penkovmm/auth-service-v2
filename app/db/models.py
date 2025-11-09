@@ -4,7 +4,7 @@ SQLAlchemy database models.
 Defines all database tables and relationships.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import (
     String,
@@ -107,6 +107,11 @@ class UserSession(Base):
         Index("ix_user_sessions_user_id_is_active", "user_id", "is_active"),
         Index("ix_user_sessions_expires_at", "expires_at"),
     )
+
+    @property
+    def is_valid(self) -> bool:
+        """Check if session is valid (active and not expired)."""
+        return self.is_active and self.expires_at > datetime.now(timezone.utc)
 
     def __repr__(self) -> str:
         return f"<UserSession(id={self.id}, session_id={self.session_id}, user_id={self.user_id})>"

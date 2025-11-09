@@ -5,14 +5,17 @@ Entry point for the HH Auth Service v2.
 """
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi import FastAPI, Request, status, Cookie, Depends
+from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
 from fastapi.exceptions import RequestValidationError
+from typing import Optional
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.db.database import close_db
+from app.db.database import close_db, get_db
 from app.api.routes import oauth_router, admin_router, health_router
+from app.services import SessionService
 from app.utils.exceptions import (
     AuthServiceException,
     OAuthError,
@@ -226,13 +229,177 @@ app.include_router(admin_router)
 # === Root Endpoint ===
 
 
-@app.get("/")
-async def root():
+@app.get("/", response_class=HTMLResponse)
+async def root(
+    session_id: Optional[str] = Cookie(None),
+    db: AsyncSession = Depends(get_db),
+):
     """
-    Root endpoint.
+    Root endpoint - main entry point for users.
 
-    Redirects to the main web UI (parser.penkovmm.ru).
-    Users should access the application through parser.penkovmm.ru.
-    This service is for OAuth callbacks only.
+    Checks if user has valid session:
+    - If yes: redirects to parser.penkovmm.ru
+    - If no: shows login page
     """
-    return RedirectResponse(url="https://parser.penkovmm.ru", status_code=302)
+    # Check if user has valid session
+    if session_id:
+        try:
+            session_service = SessionService(db)
+            user_session = await session_service.get_session(session_id)
+
+            if user_session and user_session.is_valid:
+                # User has valid session, redirect to parser
+                return RedirectResponse(url="https://parser.penkovmm.ru", status_code=302)
+        except Exception as e:
+            logger.warning(f"Session validation failed: {e}")
+
+    # No valid session - show login page
+    html_content = """
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Вход - HH Resume Parser</title>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 20px;
+            }
+
+            .container {
+                background: white;
+                border-radius: 20px;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+                max-width: 500px;
+                width: 100%;
+                padding: 40px;
+                text-align: center;
+            }
+
+            .logo {
+                width: 80px;
+                height: 80px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                border-radius: 20px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0 auto 30px;
+                font-size: 40px;
+            }
+
+            h1 {
+                color: #333;
+                margin-bottom: 10px;
+                font-size: 28px;
+                font-weight: 600;
+            }
+
+            .subtitle {
+                color: #666;
+                margin-bottom: 40px;
+                font-size: 16px;
+                line-height: 1.6;
+            }
+
+            .login-button {
+                background: #D6001C;
+                color: white;
+                border: none;
+                padding: 16px 40px;
+                border-radius: 12px;
+                font-size: 18px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                text-decoration: none;
+                display: inline-block;
+                box-shadow: 0 4px 12px rgba(214, 0, 28, 0.3);
+            }
+
+            .login-button:hover {
+                background: #B8001A;
+                transform: translateY(-2px);
+                box-shadow: 0 6px 20px rgba(214, 0, 28, 0.4);
+            }
+
+            .login-button:active {
+                transform: translateY(0);
+            }
+
+            .footer {
+                margin-top: 40px;
+                color: #999;
+                font-size: 14px;
+            }
+
+            .loading {
+                display: none;
+                margin-top: 20px;
+                color: #667eea;
+                font-size: 14px;
+            }
+
+            .loading.active {
+                display: block;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="logo">👔</div>
+            <h1>HH Resume Parser</h1>
+            <p class="subtitle">
+                Для доступа к системе подбора резюме войдите через свой аккаунт HeadHunter
+            </p>
+            <button class="login-button" onclick="startLogin()">
+                Войти через hh.ru
+            </button>
+            <div class="loading" id="loading">
+                Перенаправление на HeadHunter...
+            </div>
+            <div class="footer">
+                © 2025 Корпоративный университет АО «Газстройпром»
+            </div>
+        </div>
+
+        <script>
+            async function startLogin() {
+                const loadingEl = document.getElementById('loading');
+                loadingEl.classList.add('active');
+
+                try {
+                    // Get authorization URL from auth service
+                    const response = await fetch('/auth/login');
+                    const data = await response.json();
+
+                    if (data.authorization_url) {
+                        // Redirect to HeadHunter OAuth
+                        window.location.href = data.authorization_url;
+                    } else {
+                        throw new Error('No authorization URL received');
+                    }
+                } catch (error) {
+                    console.error('Login failed:', error);
+                    loadingEl.classList.remove('active');
+                    alert('Ошибка при входе. Попробуйте еще раз.');
+                }
+            }
+        </script>
+    </body>
+    </html>
+    """
+
+    return HTMLResponse(content=html_content)

@@ -7,8 +7,8 @@ Handles OAuth 2.0 flow with HeadHunter:
 - /logout - logout user
 """
 
-from fastapi import APIRouter, Depends, Request, HTTPException, status, Response
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Depends, Request, HTTPException, status, Response, Cookie
+from fastapi.responses import RedirectResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
@@ -100,7 +100,7 @@ async def login(
         )
 
 
-@router.get("/callback", response_model=LoginSuccessResponse)
+@router.get("/callback")
 async def oauth_callback(
     code: str,
     state: str,
@@ -191,12 +191,13 @@ async def oauth_callback(
             session_id=user_session.session_id,
         )
 
-        from app.schemas.responses import UserResponse
+        # Create redirect response to parser.penkovmm.ru with session_id in query
+        # We pass session_id via query parameter instead of cookie because cross-subdomain
+        # cookies can be blocked by browsers due to SameSite policies
+        redirect_url = f"https://parser.penkovmm.ru/auth/callback?session_id={user_session.session_id}"
+        response = RedirectResponse(url=redirect_url, status_code=302)
 
-        return LoginSuccessResponse(
-            session_id=user_session.session_id,
-            user=UserResponse.model_validate(user),
-        )
+        return response
 
     except OAuthStateError as e:
         logger.warning("oauth_state_error", error=str(e), state=state)
@@ -388,4 +389,84 @@ async def get_token(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve token: {str(e)}",
+        )
+
+
+@router.get("/user_info")
+async def get_user_info(
+    session_id: str = Cookie(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get user information for a session.
+
+    Retrieves user information for the provided session.
+
+    **Cookie:**
+    - session_id: Session ID from successful OAuth login
+
+    **Returns:**
+    - user: User information (id, hh_user_id, email, first_name, last_name)
+
+    **Errors:**
+    - 401: Invalid session or session expired
+    - 500: Internal server error
+    """
+    if not session_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No session ID provided",
+        )
+
+    session_service = SessionService(db)
+
+    try:
+        # Get and validate session
+        user_session = await session_service.get_session(session_id)
+
+        if not user_session or not user_session.is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired session",
+            )
+
+        # Get user info
+        from app.db.repositories.user import UserRepository
+        user_repo = UserRepository(db)
+        user = await user_repo.get_by_id(user_session.user_id)
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
+            )
+
+        logger.info(
+            "user_info_retrieved",
+            user_id=user.id,
+            session_id=session_id,
+        )
+
+        return {
+            "user": {
+                "id": user.id,
+                "hh_user_id": user.hh_user_id,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+            }
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        logger.error(
+            "user_info_retrieval_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve user info: {str(e)}",
         )
