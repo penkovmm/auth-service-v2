@@ -6,7 +6,7 @@ Entry point for the HH Auth Service v2.
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.exceptions import RequestValidationError
 
 from app.core.config import get_settings
@@ -231,11 +231,8 @@ async def root():
     """
     Root endpoint.
 
-    Returns basic service information.
+    Redirects to the main web UI (parser.penkovmm.ru).
+    Users should access the application through parser.penkovmm.ru.
+    This service is for OAuth callbacks only.
     """
-    return {
-        "service": settings.app_name,
-        "version": settings.app_version,
-        "environment": settings.environment,
-        "status": "running",
-    }
+    return RedirectResponse(url="https://parser.penkovmm.ru", status_code=302)
