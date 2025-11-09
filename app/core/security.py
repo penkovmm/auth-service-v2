@@ -9,7 +9,7 @@ Provides:
 
 from cryptography.fernet import Fernet, InvalidToken
 import bcrypt
-from fastapi import HTTPException, status
+from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import secrets
 from typing import Tuple
@@ -158,12 +158,14 @@ def get_security_service() -> SecurityService:
 security_scheme = HTTPBasic()
 
 
-async def verify_admin(credentials: HTTPBasicCredentials) -> Tuple[str, str]:
+async def verify_admin(
+    credentials: HTTPBasicCredentials = Depends(security_scheme)
+) -> Tuple[str, str]:
     """
     FastAPI dependency to verify admin credentials using HTTP Basic Auth.
 
     Args:
-        credentials: HTTP Basic credentials from request
+        credentials: HTTP Basic credentials from request (automatically extracted)
 
     Returns:
         Tuple[str, str]: (username, password) if valid
@@ -172,8 +174,8 @@ async def verify_admin(credentials: HTTPBasicCredentials) -> Tuple[str, str]:
         HTTPException: 401 if credentials are invalid
 
     Usage:
-        @app.get("/admin/users", dependencies=[Depends(verify_admin)])
-        async def get_users():
+        @app.get("/admin/users")
+        async def get_users(admin: tuple[str, str] = Depends(verify_admin)):
             ...
     """
     security_service = get_security_service()

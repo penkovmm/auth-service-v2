@@ -7,6 +7,7 @@ Pydantic models for request/response validation.
 from app.schemas.requests import (
     AddToWhitelistRequest,
     RemoveFromWhitelistRequest,
+    GetTokenRequest,
 )
 from app.schemas.responses import (
     UserResponse,
@@ -26,12 +27,14 @@ from app.schemas.responses import (
     MessageResponse,
     SuccessResponse,
     HealthCheckResponse,
+    TokenResponse,
 )
 
 __all__ = [
     # Requests
     "AddToWhitelistRequest",
     "RemoveFromWhitelistRequest",
+    "GetTokenRequest",
     # Responses
     "UserResponse",
     "UserListResponse",
@@ -50,4 +53,5 @@ __all__ = [
     "MessageResponse",
     "SuccessResponse",
     "HealthCheckResponse",
+    "TokenResponse",
 ]

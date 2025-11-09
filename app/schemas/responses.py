@@ -193,3 +193,14 @@ class HealthCheckResponse(BaseResponse):
     environment: str
     database: str = Field(..., description="Database status: connected, disconnected")
     timestamp: datetime
+
+
+# === Token Schemas ===
+
+
+class TokenResponse(BaseResponse):
+    """HH access token response."""
+
+    access_token: str = Field(..., description="HeadHunter API access token")
+    expires_at: datetime = Field(..., description="Token expiration timestamp")
+    user_id: int = Field(..., description="User ID")

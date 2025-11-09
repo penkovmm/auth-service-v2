@@ -15,7 +15,13 @@ from app.core.logging import get_logger
 from app.db.database import get_db
 from app.services import HeadHunterOAuthService, TokenService, SessionService
 from app.db.repositories.audit import AuditLogRepository
-from app.schemas import OAuthURLResponse, LoginSuccessResponse, LogoutResponse
+from app.schemas import (
+    OAuthURLResponse,
+    LoginSuccessResponse,
+    LogoutResponse,
+    TokenResponse,
+    GetTokenRequest,
+)
 from app.utils.exceptions import (
     OAuthError,
     OAuthStateError,
@@ -310,4 +316,76 @@ async def logout(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Logout failed: {str(e)}",
+        )
+
+
+@router.post("/token", response_model=TokenResponse)
+async def get_token(
+    request_data: GetTokenRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get valid HH access token for a session.
+
+    Retrieves current access token for the provided session.
+    Automatically refreshes token if expired.
+
+    **Request Body:**
+    - session_id: Session ID from successful OAuth login
+
+    **Returns:**
+    - access_token: Valid HeadHunter API access token
+    - expires_at: Token expiration timestamp
+    - user_id: User ID
+
+    **Errors:**
+    - 401: Invalid session or session expired
+    - 500: Internal server error
+    """
+    session_service = SessionService(db)
+    token_service = TokenService(db)
+
+    try:
+        # Get and validate session
+        user_session = await session_service.get_session(request_data.session_id)
+
+        if not user_session or not user_session.is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired session",
+            )
+
+        # Get token (automatically refreshes if needed)
+        token = await token_service.get_valid_token(user_session.user_id)
+
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unable to retrieve valid token. Please re-authenticate",
+            )
+
+        logger.info(
+            "token_retrieved",
+            user_id=user_session.user_id,
+            session_id=request_data.session_id,
+        )
+
+        return TokenResponse(
+            access_token=token.access_token_decrypted,
+            expires_at=token.expires_at,
+            user_id=user_session.user_id,
+        )
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        logger.error(
+            "token_retrieval_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve token: {str(e)}",
         )

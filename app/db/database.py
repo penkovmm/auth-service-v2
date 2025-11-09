@@ -82,7 +82,7 @@ def get_engine() -> AsyncEngine:
 
 # Session factory
 async_session_factory = async_sessionmaker(
-    bind=get_engine,  # Will call get_engine() lazily
+    bind=get_engine(),  # Call get_engine() to get the engine instance
     class_=AsyncSession,
     expire_on_commit=False,  # Don't expire objects after commit
     autocommit=False,

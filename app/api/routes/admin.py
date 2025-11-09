@@ -6,10 +6,9 @@ Protected with HTTP Basic Auth.
 
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from fastapi.security import HTTPBasicCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import security_scheme, verify_admin
+from app.core.security import verify_admin
 from app.core.logging import get_logger
 from app.db.database import get_db
 from app.services import AdminService
@@ -36,7 +35,6 @@ async def add_to_whitelist(
     request_data: AddToWhitelistRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    credentials: HTTPBasicCredentials = Depends(security_scheme),
     admin: tuple[str, str] = Depends(verify_admin),
 ):
     """
@@ -99,7 +97,6 @@ async def remove_from_whitelist(
     request_data: RemoveFromWhitelistRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    credentials: HTTPBasicCredentials = Depends(security_scheme),
     admin: tuple[str, str] = Depends(verify_admin),
 ):
     """
@@ -163,7 +160,6 @@ async def get_whitelist(
     active_only: bool = True,
     limit: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
-    credentials: HTTPBasicCredentials = Depends(security_scheme),
     admin: tuple[str, str] = Depends(verify_admin),
 ):
     """
@@ -217,7 +213,6 @@ async def get_users(
     active_only: bool = False,
     limit: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
-    credentials: HTTPBasicCredentials = Depends(security_scheme),
     admin: tuple[str, str] = Depends(verify_admin),
 ):
     """
@@ -270,7 +265,6 @@ async def get_user_audit_logs(
     limit: int = 100,
     event_category: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    credentials: HTTPBasicCredentials = Depends(security_scheme),
     admin: tuple[str, str] = Depends(verify_admin),
 ):
     """
@@ -326,7 +320,6 @@ async def get_user_audit_logs(
 @router.get("/statistics", response_model=StatisticsResponse)
 async def get_statistics(
     db: AsyncSession = Depends(get_db),
-    credentials: HTTPBasicCredentials = Depends(security_scheme),
     admin: tuple[str, str] = Depends(verify_admin),
 ):
     """

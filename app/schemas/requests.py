@@ -54,3 +54,16 @@ class RemoveFromWhitelistRequest(BaseModel):
         if not v:
             raise ValueError("HH user ID cannot be empty")
         return v
+
+
+# === Token Requests ===
+
+
+class GetTokenRequest(BaseModel):
+    """Get HH access token request."""
+
+    session_id: str = Field(
+        ...,
+        min_length=1,
+        description="Session ID from successful OAuth login",
+    )

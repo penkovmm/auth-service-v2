@@ -21,11 +21,11 @@ services:
     restart: unless-stopped
 
   # Auth Service Application
-  auth-service:
+  auth-service-v2:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: auth-service-app
+    container_name: auth-service-v2-app
     environment:
       # Application
       APP_NAME: ${APP_NAME:-HH Auth Service v2}
@@ -68,8 +68,9 @@ services:
       # Monitoring
       METRICS_ENABLED: ${METRICS_ENABLED:-true}
 
-    ports:
-      - "${APP_PORT:-8000}:8000"
+    # Ports are exposed through nginx-proxy, not directly
+    # ports:
+    #   - "${APP_PORT:-8000}:8000"
 
     depends_on:
       postgres:
@@ -84,8 +85,18 @@ services:
 
     networks:
       - auth-network
+      - nginx-proxy-network
 
     restart: unless-stopped
+
+    labels:
+      - "com.docker.compose.project=auth-service-v2"
+      # Nginx Proxy настройки
+      - "VIRTUAL_HOST=hh.penkovmm.ru"
+      - "VIRTUAL_PORT=8000"
+      # Let's Encrypt настройки
+      - "LETSENCRYPT_HOST=hh.penkovmm.ru"
+      - "LETSENCRYPT_EMAIL=penkovmm@gmail.com"
 
     # Run migrations on startup
     command: >
@@ -105,3 +116,6 @@ volumes:
 networks:
   auth-network:
     driver: bridge
+  nginx-proxy-network:
+    external: true
+    name: nginx-proxy-network
