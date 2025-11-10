@@ -4,7 +4,7 @@ User repository for database operations.
 Handles CRUD operations for User and AllowedUser models.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -72,7 +72,7 @@ class UserRepository(BaseRepository[User]):
             last_name=last_name,
             middle_name=middle_name,
             is_active=True,
-            last_login_at=datetime.utcnow(),
+            last_login_at=datetime.now(timezone.utc),
         )
 
     async def update_last_login(self, user_id: int) -> Optional[User]:
@@ -85,7 +85,7 @@ class UserRepository(BaseRepository[User]):
         Returns:
             Updated User instance or None if not found
         """
-        return await self.update(user_id, last_login_at=datetime.utcnow())
+        return await self.update(user_id, last_login_at=datetime.now(timezone.utc))
 
     async def update_user_info(
         self,

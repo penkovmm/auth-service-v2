@@ -4,7 +4,7 @@ Token service for managing OAuth tokens.
 Handles token encryption, decryption, storage, and retrieval.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -65,7 +65,7 @@ class TokenService:
             # Calculate expiration
             expires_at = None
             if expires_in:
-                expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+                expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
 
             # Revoke existing active tokens for user
             await self.token_repo.revoke_all_user_tokens(user_id)
@@ -121,7 +121,7 @@ class TokenService:
             raise TokenError(f"No active token found for user {user_id}")
 
         # Check expiration
-        if token.expires_at and token.expires_at <= datetime.utcnow():
+        if token.expires_at and token.expires_at <= datetime.now(timezone.utc):
             logger.warning("token_expired", user_id=user_id, token_id=token.id)
             await self.token_repo.revoke_token(token.id)
             raise TokenExpiredError("Access token has expired")
@@ -164,7 +164,7 @@ class TokenService:
             raise TokenError(f"No active token found for user {user_id}")
 
         # Check expiration
-        if token.expires_at and token.expires_at <= datetime.utcnow():
+        if token.expires_at and token.expires_at <= datetime.now(timezone.utc):
             logger.warning("token_expired", user_id=user_id, token_id=token.id)
             await self.token_repo.revoke_token(token.id)
             raise TokenExpiredError("Access token has expired")

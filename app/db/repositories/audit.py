@@ -5,7 +5,7 @@ Handles CRUD operations for AuditLog model.
 Provides methods for logging security and system events.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -352,7 +352,7 @@ class AuditLogRepository(BaseRepository[AuditLog]):
         Returns:
             Number of logs deleted
         """
-        cutoff_date = datetime.utcnow() - timedelta(days=older_than_days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=older_than_days)
 
         stmt = select(AuditLog).where(AuditLog.created_at <= cutoff_date)
         result = await self.session.execute(stmt)

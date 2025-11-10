@@ -4,7 +4,7 @@ Token repository for database operations.
 Handles CRUD operations for OAuthToken model.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -79,7 +79,7 @@ class TokenRepository(BaseRepository[OAuthToken]):
 
         for token in tokens:
             # If no expiration set, or not expired yet
-            if token.expires_at is None or token.expires_at > datetime.utcnow():
+            if token.expires_at is None or token.expires_at > datetime.now(timezone.utc):
                 return token
 
         return None
@@ -189,7 +189,7 @@ class TokenRepository(BaseRepository[OAuthToken]):
         stmt = select(OAuthToken).where(
             and_(
                 OAuthToken.is_revoked == False,
-                OAuthToken.expires_at <= datetime.utcnow(),
+                OAuthToken.expires_at <= datetime.now(timezone.utc),
             )
         )
         result = await self.session.execute(stmt)
@@ -214,7 +214,7 @@ class TokenRepository(BaseRepository[OAuthToken]):
         Returns:
             Number of tokens deleted
         """
-        cutoff_date = datetime.utcnow() - timedelta(days=older_than_days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=older_than_days)
 
         stmt = select(OAuthToken).where(
             and_(

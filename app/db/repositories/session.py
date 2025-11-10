@@ -4,7 +4,7 @@ Session repository for database operations.
 Handles CRUD operations for UserSession, OAuthState, and OAuthExchangeCode models.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,7 +46,7 @@ class SessionRepository(BaseRepository[UserSession]):
             and_(
                 UserSession.session_id == session_id,
                 UserSession.is_active == True,
-                UserSession.expires_at > datetime.utcnow(),
+                UserSession.expires_at > datetime.now(timezone.utc),
             )
         )
         result = await self.session.execute(stmt)
@@ -96,7 +96,7 @@ class SessionRepository(BaseRepository[UserSession]):
         if not session_obj:
             return None
 
-        return await self.update(session_obj.id, last_activity_at=datetime.utcnow())
+        return await self.update(session_obj.id, last_activity_at=datetime.now(timezone.utc))
 
     async def revoke_session(self, session_id: str) -> bool:
         """
@@ -156,7 +156,7 @@ class SessionRepository(BaseRepository[UserSession]):
                 and_(
                     UserSession.user_id == user_id,
                     UserSession.is_active == True,
-                    UserSession.expires_at > datetime.utcnow(),
+                    UserSession.expires_at > datetime.now(timezone.utc),
                 )
             )
         else:
@@ -174,7 +174,7 @@ class SessionRepository(BaseRepository[UserSession]):
         """
         stmt = select(UserSession).where(
             and_(
-                UserSession.is_active == True, UserSession.expires_at <= datetime.utcnow()
+                UserSession.is_active == True, UserSession.expires_at <= datetime.now(timezone.utc)
             )
         )
         result = await self.session.execute(stmt)
@@ -253,7 +253,7 @@ class OAuthStateRepository(BaseRepository[OAuthState]):
             and_(
                 OAuthState.state == state,
                 OAuthState.is_used == False,
-                OAuthState.expires_at > datetime.utcnow(),
+                OAuthState.expires_at > datetime.now(timezone.utc),
             )
         )
         result = await self.session.execute(stmt)
@@ -263,7 +263,7 @@ class OAuthStateRepository(BaseRepository[OAuthState]):
             return None
 
         # Mark as used
-        await self.update(state_obj.id, is_used=True, used_at=datetime.utcnow())
+        await self.update(state_obj.id, is_used=True, used_at=datetime.now(timezone.utc))
         await self.session.refresh(state_obj)
 
         return state_obj
@@ -275,7 +275,7 @@ class OAuthStateRepository(BaseRepository[OAuthState]):
         Returns:
             Number of states deleted
         """
-        stmt = select(OAuthState).where(OAuthState.expires_at <= datetime.utcnow())
+        stmt = select(OAuthState).where(OAuthState.expires_at <= datetime.now(timezone.utc))
         result = await self.session.execute(stmt)
         states = result.scalars().all()
 
@@ -360,7 +360,7 @@ class OAuthExchangeCodeRepository(BaseRepository[OAuthExchangeCode]):
                 OAuthExchangeCode.code == code,
                 OAuthExchangeCode.state == state,
                 OAuthExchangeCode.is_used == False,
-                OAuthExchangeCode.expires_at > datetime.utcnow(),
+                OAuthExchangeCode.expires_at > datetime.now(timezone.utc),
             )
         )
         result = await self.session.execute(stmt)
@@ -370,7 +370,7 @@ class OAuthExchangeCodeRepository(BaseRepository[OAuthExchangeCode]):
             return None
 
         # Mark as used
-        await self.update(code_obj.id, is_used=True, used_at=datetime.utcnow())
+        await self.update(code_obj.id, is_used=True, used_at=datetime.now(timezone.utc))
         await self.session.refresh(code_obj)
 
         return code_obj
@@ -383,7 +383,7 @@ class OAuthExchangeCodeRepository(BaseRepository[OAuthExchangeCode]):
             Number of codes deleted
         """
         stmt = select(OAuthExchangeCode).where(
-            OAuthExchangeCode.expires_at <= datetime.utcnow()
+            OAuthExchangeCode.expires_at <= datetime.now(timezone.utc)
         )
         result = await self.session.execute(stmt)
         codes = result.scalars().all()

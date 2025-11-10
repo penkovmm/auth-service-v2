@@ -4,7 +4,7 @@ Health check and system routes.
 Provides endpoints for monitoring service health.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,7 +58,7 @@ async def health_check(db: AsyncSession = Depends(get_db)):
         version=settings.app_version,
         environment=settings.environment,
         database=db_status,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
     )
 
     if overall_status != "healthy":

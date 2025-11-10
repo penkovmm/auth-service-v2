@@ -275,7 +275,7 @@ class AdminService:
         """
         from datetime import datetime, timedelta
 
-        since = datetime.utcnow() - timedelta(hours=since_hours)
+        since = datetime.now(timezone.utc) - timedelta(hours=since_hours)
 
         logs = await self.audit_repo.get_failed_events(
             event_category="auth",
@@ -309,7 +309,7 @@ class AdminService:
         """
         from datetime import datetime, timedelta
 
-        since = datetime.utcnow() - timedelta(hours=since_hours)
+        since = datetime.now(timezone.utc) - timedelta(hours=since_hours)
 
         logs = await self.audit_repo.get_failed_events(
             event_category="security",

@@ -5,7 +5,7 @@ Handles session creation, validation, and cleanup.
 """
 
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,7 +66,7 @@ class SessionService:
             session_id = self._generate_session_id()
 
             # Calculate expiration
-            expires_at = datetime.utcnow() + timedelta(
+            expires_at = datetime.now(timezone.utc) + timedelta(
                 hours=self.settings.session_expire_hours
             )
 
@@ -227,7 +227,7 @@ class SessionService:
         user_session = await self.get_session(session_id)
 
         # Calculate new expiration
-        new_expires_at = datetime.utcnow() + timedelta(
+        new_expires_at = datetime.now(timezone.utc) + timedelta(
             hours=self.settings.session_expire_hours
         )
 
@@ -235,7 +235,7 @@ class SessionService:
         updated_session = await self.session_repo.update(
             user_session.id,
             expires_at=new_expires_at,
-            last_activity_at=datetime.utcnow(),
+            last_activity_at=datetime.now(timezone.utc),
         )
 
         logger.info(

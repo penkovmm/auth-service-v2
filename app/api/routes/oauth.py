@@ -357,9 +357,12 @@ async def get_token(
             )
 
         # Get token (automatically refreshes if needed)
-        token = await token_service.get_valid_token(user_session.user_id)
+        access_token = await token_service.get_access_token(user_session.user_id)
 
-        if not token:
+        # Get full token object for expires_at
+        token_obj = await token_service.token_repo.get_active_token_by_user(user_session.user_id)
+
+        if not access_token or not token_obj:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Unable to retrieve valid token. Please re-authenticate",
@@ -372,8 +375,8 @@ async def get_token(
         )
 
         return TokenResponse(
-            access_token=token.access_token_decrypted,
-            expires_at=token.expires_at,
+            access_token=access_token,
+            expires_at=token_obj.expires_at,
             user_id=user_session.user_id,
         )
 

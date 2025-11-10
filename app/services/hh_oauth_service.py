@@ -5,7 +5,7 @@ Handles OAuth 2.0 flow with HeadHunter API.
 """
 
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional, Tuple
 from urllib.parse import urlencode
 import httpx
@@ -77,7 +77,7 @@ class HeadHunterOAuthService:
         state = self._generate_state()
 
         # Calculate state expiration
-        expires_at = datetime.utcnow() + timedelta(
+        expires_at = datetime.now(timezone.utc) + timedelta(
             minutes=self.settings.oauth_state_expire_minutes
         )
 
